@@ -1,10 +1,17 @@
 "use client";
 
 import React, { useMemo, useState, useCallback } from "react";
-import { createEditor, Descendant, BaseEditor } from "slate";
+import { createEditor, Descendant, BaseEditor, Editor as SlateEditor, Transforms } from "slate";
 import { Slate, Editable, withReact, ReactEditor } from "slate-react";
 import clsx from "clsx";
 import Toolbar from "./Toolbar";
+
+const isMod = (e: React.KeyboardEvent) => {
+  if (typeof window !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform)) {
+    return e.metaKey;
+  }
+  return e.ctrlKey;
+};
 
 export type CustomElement = {
   type: "paragraph";
@@ -77,6 +84,64 @@ const Editor = () => {
   const renderElement = useCallback((props: any) => <Element {...props} />, []);
   const renderLeaf = useCallback((props: any) => <Leaf {...props} />, []);
 
+  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const mod = isMod(e);
+    
+    // Formatting Shortcuts
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      const marks = SlateEditor.marks(editor) as Record<string, any>;
+      if (marks && marks["bold"]) SlateEditor.removeMark(editor, "bold");
+      else SlateEditor.addMark(editor, "bold", true);
+      return;
+    }
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "i") {
+      e.preventDefault();
+      const marks = SlateEditor.marks(editor) as Record<string, any>;
+      if (marks && marks["italic"]) SlateEditor.removeMark(editor, "italic");
+      else SlateEditor.addMark(editor, "italic", true);
+      return;
+    }
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "u") {
+      e.preventDefault();
+      const marks = SlateEditor.marks(editor) as Record<string, any>;
+      if (marks && marks["underline"]) SlateEditor.removeMark(editor, "underline");
+      else SlateEditor.addMark(editor, "underline", true);
+      return;
+    }
+
+    // Font Sizing Shortcuts
+    if (mod && e.shiftKey && (e.key === "." || e.key === ">")) {
+      e.preventDefault();
+      const marks = SlateEditor.marks(editor) as Record<string, any>;
+      const currentSize = marks?.fontSize || 16;
+      SlateEditor.addMark(editor, "fontSize", Math.max(8, Math.min(72, currentSize + 2)));
+      return;
+    }
+    if (mod && e.shiftKey && (e.key === "," || e.key === "<")) {
+      e.preventDefault();
+      const marks = SlateEditor.marks(editor) as Record<string, any>;
+      const currentSize = marks?.fontSize || 16;
+      SlateEditor.addMark(editor, "fontSize", Math.max(8, Math.min(72, currentSize - 2)));
+      return;
+    }
+
+    // Line Breaks & Format Reset
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      editor.insertBreak();
+      SlateEditor.removeMark(editor, "bold");
+      SlateEditor.removeMark(editor, "italic");
+      SlateEditor.removeMark(editor, "underline");
+      return;
+    }
+    if (e.key === "Enter" && e.shiftKey) {
+      e.preventDefault();
+      SlateEditor.insertText(editor, "\n");
+      return;
+    }
+  }, [editor]);
+
   return (
     <div className="w-full max-w-4xl mx-auto my-8 px-4 sm:px-6 lg:px-8 relative pb-32">
       <Slate editor={editor} initialValue={value} onChange={setValue}>
@@ -92,6 +157,7 @@ const Editor = () => {
               placeholder="Start typing..."
               renderElement={renderElement}
               renderLeaf={renderLeaf}
+              onKeyDown={onKeyDown}
             />
           </div>
         </div>
