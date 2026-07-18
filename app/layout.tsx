@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { CollaboratorsProvider } from "@/components/CollaboratorsContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,7 +33,11 @@ export default function RootLayout({
         lang="en"
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
       >
-        <body className="font-sans min-h-full flex flex-col bg-slate-50 text-slate-900 leading-relaxed">{children}</body>
+        <body className="font-sans min-h-full flex flex-col bg-slate-50 text-slate-900 leading-relaxed">
+          <CollaboratorsProvider>
+            {children}
+          </CollaboratorsProvider>
+        </body>
     </html>
   );
 }

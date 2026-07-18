@@ -1,13 +1,16 @@
 "use client";
 
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { createEditor, Descendant, BaseEditor, Editor as SlateEditor, Transforms } from "slate";
 import { Slate, Editable, withReact, ReactEditor } from "slate-react";
 import clsx from "clsx";
 import * as Y from "yjs";
 import { WebrtcProvider } from "y-webrtc";
-import { withYjs, YjsEditor, slateNodesToInsertDelta } from "@slate-yjs/core";
+import { withYjs, YjsEditor, slateNodesToInsertDelta, withCursors } from "@slate-yjs/core";
 import Toolbar from "./Toolbar";
+import { generateIdentity } from "@/lib/identity";
+import { useRemoteCursors } from "@/hooks/useRemoteCursors";
+import { CursorOverlay } from "./CursorOverlay";
 
 const isMod = (e: React.KeyboardEvent) => {
   if (typeof window !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform)) {
@@ -84,17 +87,30 @@ const Editor = () => {
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [yjsContext, setYjsContext] = useState<{ sharedType: Y.XmlText; provider: WebrtcProvider; editor: any } | null>(null);
 
+  const identity = useRef(generateIdentity());
+
   useEffect(() => {
     // Instantiate Yjs and WebRTC only on the client side to avoid SSR errors
     const doc = new Y.Doc();
     const sharedType = doc.get("content", Y.XmlText) as Y.XmlText;
     const provider = new WebrtcProvider("test-document-room", doc);
 
-    if (sharedType.length === 0) {
-      sharedType.applyDelta(slateNodesToInsertDelta(initialValue));
-    }
+    const editor = withCursors(
+      withYjs(withReact(createEditor()), sharedType),
+      provider.awareness,
+      { data: identity.current }
+    );
 
-    const editor = withYjs(withReact(createEditor()), sharedType);
+    // Don't apply initialValue immediately. Wait for sync with peers.
+    provider.on("synced", (arg: any) => {
+      const isSynced = typeof arg === "boolean" ? arg : arg?.synced;
+      if (isSynced && sharedType.length === 0) {
+        SlateEditor.withoutNormalizing(editor, () => {
+          sharedType.applyDelta(slateNodesToInsertDelta(initialValue));
+        });
+      }
+    });
+
     setYjsContext({ sharedType, provider, editor });
 
     return () => {
@@ -186,8 +202,10 @@ const Editor = () => {
     }
   }, [yjsContext]);
 
+  const cursorStates = useRemoteCursors(yjsContext?.editor, yjsContext?.provider);
+
   if (!yjsContext) return null;
-  const { editor } = yjsContext;
+  const { editor, sharedType } = yjsContext;
 
   return (
     <div className="w-full max-w-4xl mx-auto my-8 px-4 sm:px-6 lg:px-8 relative pb-32">
@@ -198,7 +216,8 @@ const Editor = () => {
           className="transition-transform duration-200 ease-in-out origin-top"
           style={{ transform: `scale(${zoomLevel / 100})` }}
         >
-          <div className="bg-white shadow-2xl ring-1 ring-slate-200 min-h-[1050px] w-full p-12 sm:p-20 flex flex-col rounded-sm">
+          <div className="bg-white shadow-2xl ring-1 ring-slate-200 min-h-[1050px] w-full p-12 sm:p-20 flex flex-col rounded-sm relative">
+            <CursorOverlay cursorStates={cursorStates} sharedType={sharedType} />
             <Editable 
               className="outline-none flex-grow text-slate-800"
               placeholder="Start typing..."
