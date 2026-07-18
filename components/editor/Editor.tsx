@@ -11,6 +11,8 @@ import Toolbar from "./Toolbar";
 import { generateIdentity } from "@/lib/identity";
 import { useRemoteCursors } from "@/hooks/useRemoteCursors";
 import { CursorOverlay } from "./CursorOverlay";
+import { uploadImageToCloudinary } from "@/cloudinary";
+import { toast } from "sonner";
 
 const isMod = (e: React.KeyboardEvent) => {
   if (typeof window !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform)) {
@@ -20,8 +22,10 @@ const isMod = (e: React.KeyboardEvent) => {
 };
 
 export type CustomElement = {
-  type: "paragraph" | "heading-one" | "heading-two" | "bulleted-list" | "numbered-list" | "list-item";
+  type: "paragraph" | "heading-one" | "heading-two" | "bulleted-list" | "numbered-list" | "list-item" | "image" | "image-loading";
   align?: "left" | "center" | "right" | "justify";
+  url?: string;
+  id?: string;
   children: Descendant[];
 };
 
@@ -74,6 +78,25 @@ const Element = ({ attributes, children, element }: any) => {
   );
 
   switch (element.type) {
+    case "image":
+      return (
+        <div {...attributes} className="mb-4 relative rounded-md overflow-hidden border border-slate-200 shadow-sm flex items-center justify-center bg-slate-50 group">
+          <div contentEditable={false} className="w-full flex justify-center">
+            <img src={element.url} className="max-w-full h-auto block rounded-sm" alt="Uploaded image" />
+          </div>
+          <span className="hidden">{children}</span>
+        </div>
+      );
+    case "image-loading":
+      return (
+        <div {...attributes} className="mb-4 relative rounded-md overflow-hidden border border-slate-200 shadow-sm flex items-center justify-center bg-slate-50/50 min-h-[200px]">
+          <div contentEditable={false} className="w-full flex items-center justify-center flex-col gap-3">
+            <div className="w-8 h-8 border-4 border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
+            <span className="text-sm font-medium text-slate-500">Uploading...</span>
+          </div>
+          <span className="hidden">{children}</span>
+        </div>
+      );
     case "heading-one":
       return (
         <h1 {...attributes} className={clsx(alignClass, "text-4xl font-bold mt-6 mb-4 leading-tight text-slate-900")}>
@@ -133,7 +156,12 @@ const Editor = () => {
       { data: identity.current }
     );
 
-    const { normalizeNode } = editor;
+    const { isVoid, normalizeNode } = editor;
+
+    editor.isVoid = element => {
+      return (element as any).type === "image" || (element as any).type === "image-loading" ? true : isVoid(element);
+    };
+
     editor.normalizeNode = (entry) => {
       const [node, path] = entry;
       
@@ -148,6 +176,8 @@ const Editor = () => {
         if ((node as any).children.length === 0) {
           if ((node as any).type === "bulleted-list" || (node as any).type === "numbered-list") {
             Transforms.insertNodes(editor, { type: "list-item", children: [{ text: "" }] } as any, { at: [...path, 0] });
+          } else if ((node as any).type === "image" || (node as any).type === "image-loading") {
+            Transforms.insertNodes(editor, { text: "" } as any, { at: [...path, 0] });
           } else {
             Transforms.insertNodes(editor, { text: "" } as any, { at: [...path, 0] });
           }
@@ -315,6 +345,54 @@ const Editor = () => {
     }
   }, [yjsContext]);
 
+  const onPaste = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (!yjsContext) return;
+    const { editor } = yjsContext;
+    const { items } = e.clipboardData;
+
+    let imageFile: File | null = null;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          imageFile = file;
+          break;
+        }
+      }
+    }
+
+    if (imageFile) {
+      e.preventDefault();
+
+      if (imageFile.size > 5 * 1024 * 1024) {
+        toast.error("File size exceeds 5MB limit.");
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      Transforms.insertNodes(editor, {
+        type: "image-loading",
+        id,
+        children: [{ text: "" }],
+      } as any);
+
+      try {
+        const url = await uploadImageToCloudinary(imageFile);
+        Transforms.setNodes(
+          editor,
+          { type: "image", url } as any,
+          { at: [], match: (n) => (n as any).type === "image-loading" && (n as any).id === id }
+        );
+      } catch (error) {
+        Transforms.removeNodes(
+          editor,
+          { at: [], match: (n) => (n as any).type === "image-loading" && (n as any).id === id }
+        );
+        toast.error("Failed to upload pasted image. Please try again.");
+      }
+    }
+  }, [yjsContext]);
+
   const cursorStates = useRemoteCursors(yjsContext?.editor, yjsContext?.provider);
 
   if (!yjsContext) return null;
@@ -337,6 +415,7 @@ const Editor = () => {
               renderElement={renderElement}
               renderLeaf={renderLeaf}
               onKeyDown={onKeyDown}
+              onPaste={onPaste}
             />
           </div>
         </div>

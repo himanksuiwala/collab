@@ -15,7 +15,8 @@ import {
   Minus,
   ChevronDown,
   List,
-  ListOrdered
+  ListOrdered,
+  Image as ImageIcon
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,6 +24,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import { uploadImageToCloudinary } from "@/cloudinary";
 
 interface ToolbarProps {
   zoomLevel: number;
@@ -31,6 +34,49 @@ interface ToolbarProps {
 
 const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
   const editor = useSlate();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size exceeds 5MB limit.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const id = crypto.randomUUID();
+    
+    Transforms.insertNodes(editor, {
+      type: "image-loading",
+      id,
+      children: [{ text: "" }],
+    } as any);
+
+    try {
+      const url = await uploadImageToCloudinary(file);
+      Transforms.setNodes(
+        editor,
+        { type: "image", url } as any,
+        { at: [], match: (n) => (n as any).type === "image-loading" && (n as any).id === id }
+      );
+    } catch (error) {
+      Transforms.removeNodes(
+        editor,
+        { at: [], match: (n) => (n as any).type === "image-loading" && (n as any).id === id }
+      );
+      toast.error("Failed to upload image. Please try again.");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const isMarkActive = (format: string) => {
     const marks = Editor.marks(editor) as Record<string, any>;
@@ -184,6 +230,19 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
           <DropdownMenuItem onClick={() => toggleBlockType("heading-two")}>Sub-heading</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Divider />
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        className="hidden"
+      />
+      <Button onClick={() => fileInputRef.current?.click()}>
+        <ImageIcon size={18} />
+      </Button>
 
       <Divider />
 

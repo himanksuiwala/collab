@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { CollaboratorsProvider } from "@/components/CollaboratorsContext";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,6 +38,7 @@ export default function RootLayout({
           <CollaboratorsProvider>
             {children}
           </CollaboratorsProvider>
+          <Toaster />
         </body>
     </html>
   );
