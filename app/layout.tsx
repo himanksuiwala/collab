@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Cutive } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,9 +12,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const cutive = Cutive({
-  weight: "400",
-  variable: "--font-cutive",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -29,11 +28,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${cutive.variable} h-full antialiased`}
-    >
-      <body className="font-sans min-h-full flex flex-col bg-slate-50 text-slate-900">{children}</body>
+      <html
+        lang="en"
+        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
+      >
+        <body className="font-sans min-h-full flex flex-col bg-slate-50 text-slate-900 leading-relaxed">{children}</body>
     </html>
   );
 }

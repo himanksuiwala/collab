@@ -137,8 +137,6 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
           <Plus size={16} />
         </Button>
       </div>
-
-      <Divider />
       {/* This is purposely commented out. */}
       {/* <div className="flex items-center gap-1 ml-auto">
         <span className="text-xs text-slate-500 mr-1 pt-[2px]">Zoom</span>
