@@ -16,7 +16,8 @@ import {
   ChevronDown,
   List,
   ListOrdered,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Link as LinkIcon
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -30,9 +31,10 @@ import { uploadImageToCloudinary } from "@/cloudinary";
 interface ToolbarProps {
   zoomLevel: number;
   setZoomLevel: (zoom: number) => void;
+  onOpenLinkPopover?: () => void;
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel, onOpenLinkPopover }) => {
   const editor = useSlate();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -219,6 +221,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 h-[56px] bg-white/90 backdrop-blur border border-slate-200/60 flex items-center px-4 shadow-2xl rounded-2xl gap-1">
+      {/* 1. Font Type */}
       <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm hover:bg-slate-100 transition-colors text-slate-700 text-sm font-medium focus:outline-none">
           <span className="w-20 text-left truncate">{currentBlockType}</span>
@@ -233,19 +236,22 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
 
       <Divider />
 
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleImageUpload}
-        accept="image/*"
-        className="hidden"
-      />
-      <Button onClick={() => fileInputRef.current?.click()}>
-        <ImageIcon size={18} />
-      </Button>
+      {/* 2. Font Size */}
+      <div className="flex items-center gap-1">
+        <Button onClick={() => changeFontSize(-2)}>
+          <Minus size={16} />
+        </Button>
+        <span className="text-xs font-medium text-slate-600 w-6 text-center select-none">
+          {((Editor.marks(editor) as any)?.fontSize) || 16}
+        </span>
+        <Button onClick={() => changeFontSize(2)}>
+          <Plus size={16} />
+        </Button>
+      </div>
 
       <Divider />
 
+      {/* 3. Formatting (Bold, Italic, Underline, Link) */}
       <Button active={isMarkActive("bold")} onClick={() => toggleMark("bold")}>
         <Bold size={18} />
       </Button>
@@ -255,9 +261,13 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
       <Button active={isMarkActive("underline")} onClick={() => toggleMark("underline")}>
         <Underline size={18} />
       </Button>
+      <Button active={isBlockActive("link", "type")} onClick={() => onOpenLinkPopover && onOpenLinkPopover()}>
+        <LinkIcon size={18} />
+      </Button>
 
       <Divider />
 
+      {/* 4. Alignment */}
       <DropdownMenu>
         <DropdownMenuTrigger className="p-1.5 rounded-sm hover:bg-slate-100 transition-colors text-slate-700 flex items-center justify-center focus:outline-none">
           <AlignIcon size={18} />
@@ -284,6 +294,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
 
       <Divider />
 
+      {/* 5. Lists */}
       <Button active={isBlockActive("bulleted-list", "type")} onClick={() => toggleList("bulleted-list")}>
         <List size={18} />
       </Button>
@@ -293,38 +304,17 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
 
       <Divider />
 
-      <div className="flex items-center gap-1">
-        <Button onClick={() => changeFontSize(-2)}>
-          <Minus size={16} />
-        </Button>
-        <span className="text-xs font-medium text-slate-600 w-6 text-center select-none">
-          {((Editor.marks(editor) as any)?.fontSize) || 16}
-        </span>
-        <Button onClick={() => changeFontSize(2)}>
-          <Plus size={16} />
-        </Button>
-      </div>
-      {/* This is purposely commented out. */}
-      {/* <div className="flex items-center gap-1 ml-auto">
-        <span className="text-xs text-slate-500 mr-1 pt-[2px]">Zoom</span>
-        <Button onClick={() => handleZoomStep(-10)}>
-          <Minus size={16} />
-        </Button>
-        <div className="relative flex items-center">
-          <input
-            type="number"
-            min="50"
-            max="200"
-            value={zoomLevel}
-            onChange={handleZoomChange}
-            className="w-12 text-center text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded py-1 pt-[6px] outline-none focus:ring-1 focus:ring-slate-300"
-          />
-          <span className="absolute right-1 text-xs text-slate-400 pointer-events-none pt-[2px]">%</span>
-        </div>
-        <Button onClick={() => handleZoomStep(10)}>
-          <Plus size={16} />
-        </Button>
-      </div> */}
+      {/* 6. Image */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        className="hidden"
+      />
+      <Button onClick={() => fileInputRef.current?.click()}>
+        <ImageIcon size={18} />
+      </Button>
     </div>
   );
 };

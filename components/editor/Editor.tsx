@@ -11,6 +11,7 @@ import Toolbar from "./Toolbar";
 import { generateIdentity } from "@/lib/identity";
 import { useRemoteCursors } from "@/hooks/useRemoteCursors";
 import { CursorOverlay } from "./CursorOverlay";
+import LinkPopover from "./LinkPopover";
 import { uploadImageToCloudinary } from "@/cloudinary";
 import { toast } from "sonner";
 
@@ -22,7 +23,7 @@ const isMod = (e: React.KeyboardEvent) => {
 };
 
 export type CustomElement = {
-  type: "paragraph" | "heading-one" | "heading-two" | "bulleted-list" | "numbered-list" | "list-item" | "image" | "image-loading";
+  type: "paragraph" | "heading-one" | "heading-two" | "bulleted-list" | "numbered-list" | "list-item" | "image" | "image-loading" | "link";
   align?: "left" | "center" | "right" | "justify";
   url?: string;
   id?: string;
@@ -97,6 +98,18 @@ const Element = ({ attributes, children, element }: any) => {
           <span className="hidden">{children}</span>
         </div>
       );
+    case "link":
+      return (
+        <a 
+          {...attributes} 
+          href={element.url} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-blue-600 underline cursor-pointer"
+        >
+          {children}
+        </a>
+      );
     case "heading-one":
       return (
         <h1 {...attributes} className={clsx(alignClass, "text-4xl font-bold mt-6 mb-4 leading-tight text-slate-900")}>
@@ -142,7 +155,83 @@ const Editor = () => {
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [yjsContext, setYjsContext] = useState<{ sharedType: Y.XmlText; provider: WebrtcProvider; editor: any } | null>(null);
 
+  const [isLinkPopoverOpen, setIsLinkPopoverOpen] = useState(false);
+  const [linkSelectionRect, setLinkSelectionRect] = useState<DOMRect | null>(null);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [isEditingLink, setIsEditingLink] = useState(false);
+  const [linkSelection, setLinkSelection] = useState<Range | null>(null);
+
   const identity = useRef(generateIdentity());
+
+  const openLinkPopover = useCallback(() => {
+    if (!yjsContext) return;
+    const { editor } = yjsContext;
+    const { selection } = editor;
+    
+    if (!selection) return;
+
+    const [linkMatch] = Array.from(SlateEditor.nodes(editor, {
+      match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && n.type === 'link',
+    }));
+
+    if (linkMatch) {
+      setLinkUrl((linkMatch[0] as any).url);
+      setIsEditingLink(true);
+    } else {
+      setLinkUrl("");
+      setIsEditingLink(false);
+    }
+
+    setLinkSelection(selection);
+
+    const domSelection = window.getSelection();
+    if (domSelection && domSelection.rangeCount > 0) {
+      const domRange = domSelection.getRangeAt(0);
+      const rect = domRange.getBoundingClientRect();
+      setLinkSelectionRect(rect);
+    } else {
+      setLinkSelectionRect(null);
+    }
+
+    setIsLinkPopoverOpen(true);
+  }, [yjsContext]);
+
+  const handleSaveLink = useCallback((url: string) => {
+    if (!yjsContext || !linkSelection) return;
+    const { editor } = yjsContext;
+
+    Transforms.select(editor, linkSelection);
+
+    if (isEditingLink) {
+      Transforms.setNodes(editor, { url } as any, {
+        match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && n.type === 'link',
+      });
+    } else {
+      if (Range.isCollapsed(linkSelection)) {
+        Transforms.insertNodes(editor, { type: "link", url, children: [{ text: url }] } as any);
+      } else {
+        Transforms.wrapNodes(
+          editor,
+          { type: "link", url, children: [] } as any,
+          { split: true }
+        );
+      }
+    }
+    
+    setIsLinkPopoverOpen(false);
+  }, [yjsContext, linkSelection, isEditingLink]);
+
+  const handleDeleteLink = useCallback(() => {
+    if (!yjsContext || !linkSelection) return;
+    const { editor } = yjsContext;
+
+    Transforms.select(editor, linkSelection);
+    Transforms.unwrapNodes(editor, {
+      match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && n.type === 'link',
+    });
+    
+    setIsLinkPopoverOpen(false);
+  }, [yjsContext, linkSelection]);
 
   useEffect(() => {
     // Instantiate Yjs and WebRTC only on the client side to avoid SSR errors
@@ -156,10 +245,14 @@ const Editor = () => {
       { data: identity.current }
     );
 
-    const { isVoid, normalizeNode } = editor;
+    const { isVoid, isInline, normalizeNode } = editor;
 
     editor.isVoid = element => {
       return (element as any).type === "image" || (element as any).type === "image-loading" ? true : isVoid(element);
+    };
+
+    editor.isInline = element => {
+      return (element as any).type === "link" ? true : isInline(element);
     };
 
     editor.normalizeNode = (entry) => {
@@ -260,6 +353,12 @@ const Editor = () => {
       const marks = SlateEditor.marks(editor) as Record<string, any>;
       const currentSize = marks?.fontSize || 16;
       SlateEditor.addMark(editor, "fontSize", Math.max(8, Math.min(72, currentSize - 2)));
+      return;
+    }
+
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      openLinkPopover();
       return;
     }
 
@@ -401,7 +500,7 @@ const Editor = () => {
   return (
     <div className="w-full max-w-4xl mx-auto my-8 px-4 sm:px-6 lg:px-8 relative pb-32">
       <Slate editor={editor} initialValue={initialValue}>
-        <Toolbar zoomLevel={zoomLevel} setZoomLevel={setZoomLevel} />
+        <Toolbar zoomLevel={zoomLevel} setZoomLevel={setZoomLevel} onOpenLinkPopover={openLinkPopover} />
         
         <div 
           className="transition-transform duration-200 ease-in-out origin-top"
@@ -431,6 +530,16 @@ const Editor = () => {
             {connectionStatus}
           </span>
         </div>
+        
+        <LinkPopover
+          isOpen={isLinkPopoverOpen}
+          setIsOpen={setIsLinkPopoverOpen}
+          selectionRect={linkSelectionRect}
+          initialUrl={linkUrl}
+          onSave={handleSaveLink}
+          onDelete={handleDeleteLink}
+          isEditing={isEditingLink}
+        />
       </Slate>
     </div>
   );
