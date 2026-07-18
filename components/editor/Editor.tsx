@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { createEditor, Descendant, BaseEditor, Editor as SlateEditor, Transforms } from "slate";
+import { createEditor, Descendant, BaseEditor, Editor as SlateEditor, Transforms, Range, Element as SlateElement } from "slate";
 import { Slate, Editable, withReact, ReactEditor } from "slate-react";
 import clsx from "clsx";
 import * as Y from "yjs";
@@ -20,9 +20,9 @@ const isMod = (e: React.KeyboardEvent) => {
 };
 
 export type CustomElement = {
-  type: "paragraph";
+  type: "paragraph" | "heading-one" | "heading-two" | "bulleted-list" | "numbered-list" | "list-item";
   align?: "left" | "center" | "right" | "justify";
-  children: CustomText[];
+  children: Descendant[];
 };
 
 export type CustomText = {
@@ -65,21 +65,53 @@ const Leaf = ({ attributes, children, leaf }: any) => {
 };
 
 const Element = ({ attributes, children, element }: any) => {
-  return (
-    <p
-      {...attributes}
-      className={clsx(
-        element.align === "center" && "text-center",
-        element.align === "right" && "text-right",
-        element.align === "justify" && "text-justify",
-        element.align === "left" && "text-left",
-        !element.align && "text-left",
-        "mb-2 leading-relaxed pt-1"
-      )}
-    >
-      {children}
-    </p>
+  const alignClass = clsx(
+    element.align === "center" && "text-center",
+    element.align === "right" && "text-right",
+    element.align === "justify" && "text-justify",
+    element.align === "left" && "text-left",
+    !element.align && "text-left"
   );
+
+  switch (element.type) {
+    case "heading-one":
+      return (
+        <h1 {...attributes} className={clsx(alignClass, "text-4xl font-bold mt-6 mb-4 leading-tight text-slate-900")}>
+          {children}
+        </h1>
+      );
+    case "heading-two":
+      return (
+        <h2 {...attributes} className={clsx(alignClass, "text-2xl font-semibold mt-5 mb-3 leading-snug text-slate-800")}>
+          {children}
+        </h2>
+      );
+    case "bulleted-list":
+      return (
+        <ul {...attributes} className={clsx(alignClass, "list-disc list-outside ml-6 mb-2 space-y-1")}>
+          {children}
+        </ul>
+      );
+    case "numbered-list":
+      return (
+        <ol {...attributes} className={clsx(alignClass, "list-decimal list-outside ml-6 mb-2 space-y-1")}>
+          {children}
+        </ol>
+      );
+    case "list-item":
+      return (
+        <li {...attributes} className={clsx(alignClass, "leading-relaxed")}>
+          {children}
+        </li>
+      );
+    case "paragraph":
+    default:
+      return (
+        <p {...attributes} className={clsx(alignClass, "mb-2 leading-relaxed pt-1")}>
+          {children}
+        </p>
+      );
+  }
 };
 
 const Editor = () => {
@@ -101,15 +133,30 @@ const Editor = () => {
       { data: identity.current }
     );
 
-    // Don't apply initialValue immediately. Wait for sync with peers.
-    provider.on("synced", (arg: any) => {
-      const isSynced = typeof arg === "boolean" ? arg : arg?.synced;
-      if (isSynced && sharedType.length === 0) {
-        SlateEditor.withoutNormalizing(editor, () => {
-          sharedType.applyDelta(slateNodesToInsertDelta(initialValue));
-        });
+    const { normalizeNode } = editor;
+    editor.normalizeNode = (entry) => {
+      const [node, path] = entry;
+      
+      // Ensure editor is never completely empty
+      if (path.length === 0 && editor.children.length === 0) {
+        Transforms.insertNodes(editor, { type: "paragraph", children: [{ text: "" }] } as any, { at: [0] });
+        return;
       }
-    });
+      
+      // Ensure blocks are never empty (prevents "Cannot get start point" error)
+      if (SlateElement.isElement(node) && !SlateEditor.isEditor(node)) {
+        if ((node as any).children.length === 0) {
+          if ((node as any).type === "bulleted-list" || (node as any).type === "numbered-list") {
+            Transforms.insertNodes(editor, { type: "list-item", children: [{ text: "" }] } as any, { at: [...path, 0] });
+          } else {
+            Transforms.insertNodes(editor, { text: "" } as any, { at: [...path, 0] });
+          }
+          return;
+        }
+      }
+
+      normalizeNode(entry);
+    };
 
     setYjsContext({ sharedType, provider, editor });
 
@@ -189,15 +236,81 @@ const Editor = () => {
     // Line Breaks & Format Reset
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      
+      const { selection } = editor;
+      if (selection && Range.isCollapsed(selection)) {
+        const [match] = Array.from(SlateEditor.nodes(editor, {
+          match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && n.type === 'list-item',
+        }));
+        if (match) {
+          const [node, path] = match;
+          if (SlateEditor.isEmpty(editor, node as SlateElement)) {
+            // Empty list item -> terminate list
+            Transforms.unwrapNodes(editor, {
+              match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && (n.type === 'bulleted-list' || n.type === 'numbered-list'),
+              split: true,
+            });
+            Transforms.setNodes(editor, { type: 'paragraph' } as any);
+            return;
+          }
+        }
+      }
+
       editor.insertBreak();
+      
+      // Reset marks on new line
       SlateEditor.removeMark(editor, "bold");
       SlateEditor.removeMark(editor, "italic");
       SlateEditor.removeMark(editor, "underline");
+
+      // Downgrade new empty heading to paragraph
+      const [match] = Array.from(SlateEditor.nodes(editor, {
+        match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n),
+      }));
+      if (match) {
+        const [node, path] = match;
+        if ((node as any).type === "heading-one" || (node as any).type === "heading-two") {
+          if (SlateEditor.isEmpty(editor, node as SlateElement)) {
+            Transforms.setNodes(editor, { type: "paragraph" } as any, { at: path });
+          }
+        }
+      }
       return;
     }
     if (e.key === "Enter" && e.shiftKey) {
       e.preventDefault();
       SlateEditor.insertText(editor, "\n");
+      return;
+    }
+
+    // List Indentation (Tab / Shift+Tab)
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const [match] = Array.from(SlateEditor.nodes(editor, {
+        match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && n.type === 'list-item',
+      }));
+
+      if (match) {
+        if (e.shiftKey) {
+          Transforms.liftNodes(editor);
+          const [listParent] = Array.from(SlateEditor.nodes(editor, {
+            match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && (n.type === 'bulleted-list' || n.type === 'numbered-list'),
+          }));
+          if (!listParent) {
+            Transforms.setNodes(editor, { type: 'paragraph' } as any);
+          }
+        } else {
+          const [listMatch] = Array.from(SlateEditor.nodes(editor, {
+            match: n => !SlateEditor.isEditor(n) && SlateElement.isElement(n) && (n.type === 'bulleted-list' || n.type === 'numbered-list'),
+          }));
+          if (listMatch) {
+            const listType = (listMatch[0] as any).type;
+            Transforms.wrapNodes(editor, { type: listType } as any);
+          }
+        }
+      } else {
+        if (!e.shiftKey) editor.insertText("\t");
+      }
       return;
     }
   }, [yjsContext]);

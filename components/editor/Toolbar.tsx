@@ -12,8 +12,17 @@ import {
   AlignRight, 
   AlignJustify,
   Plus,
-  Minus
+  Minus,
+  ChevronDown,
+  List,
+  ListOrdered
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ToolbarProps {
   zoomLevel: number;
@@ -62,6 +71,71 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
     );
   };
 
+  const toggleBlockType = (format: string) => {
+    const isActive = isBlockActive(format, "type");
+    // If it's a heading and we click it again, revert to paragraph
+    const newType = isActive ? "paragraph" : format;
+    Transforms.setNodes(
+      editor,
+      { type: newType } as any,
+      { match: (n) => !Editor.isEditor(n) && SlateElement.isElement(n) }
+    );
+  };
+
+  const toggleList = (format: string) => {
+    const isActive = isBlockActive(format, "type");
+    
+    Transforms.unwrapNodes(editor, {
+      match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n.type === "bulleted-list" || n.type === "numbered-list"),
+      split: true,
+    });
+
+    const newType = isActive ? "paragraph" : "list-item";
+    
+    Transforms.setNodes(
+      editor,
+      { type: newType } as any,
+      { match: n => !Editor.isEditor(n) && SlateElement.isElement(n) }
+    );
+
+    if (!isActive) {
+      Transforms.wrapNodes(
+        editor,
+        { type: format } as any,
+        { match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && n.type === "list-item" }
+      );
+    }
+  };
+
+  const currentBlockType = isBlockActive("heading-one", "type")
+    ? "Heading"
+    : isBlockActive("heading-two", "type")
+    ? "Sub-heading"
+    : "Normal";
+
+  const getActiveAlign = () => {
+    const { selection } = editor;
+    if (!selection) return "left";
+
+    const [match] = Array.from(
+      Editor.nodes(editor, {
+        at: Editor.unhangRange(editor, selection),
+        match: (n) => !Editor.isEditor(n) && SlateElement.isElement(n),
+      })
+    );
+    if (match) {
+      return (match[0] as any).align || "left";
+    }
+    return "left";
+  };
+
+  const currentAlign = getActiveAlign();
+  const AlignIcon = 
+    currentAlign === "center" ? AlignCenter :
+    currentAlign === "right" ? AlignRight :
+    currentAlign === "justify" ? AlignJustify :
+    AlignLeft;
+
   const changeFontSize = (delta: number) => {
     const marks = Editor.marks(editor) as Record<string, any>;
     const currentSize = marks?.fontSize || 16;
@@ -87,7 +161,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
         e.preventDefault();
         onClick();
       }}
-      className={`p-1.5 rounded-sm hover:bg-slate-100 transition-colors flex items-center justify-center pt-[6px] ${
+      className={`p-1.5 rounded-sm hover:bg-slate-100 transition-colors flex items-center justify-center ${
         active ? "bg-slate-200 text-slate-900" : "text-slate-600"
       }`}
     >
@@ -99,6 +173,20 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 h-[56px] bg-white/90 backdrop-blur border border-slate-200/60 flex items-center px-4 shadow-2xl rounded-2xl gap-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm hover:bg-slate-100 transition-colors text-slate-700 text-sm font-medium focus:outline-none">
+          <span className="w-20 text-left truncate">{currentBlockType}</span>
+          <ChevronDown size={14} className="text-slate-400" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="w-36 mb-2">
+          <DropdownMenuItem onClick={() => toggleBlockType("paragraph")}>Normal</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toggleBlockType("heading-one")}>Heading</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toggleBlockType("heading-two")}>Sub-heading</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Divider />
+
       <Button active={isMarkActive("bold")} onClick={() => toggleMark("bold")}>
         <Bold size={18} />
       </Button>
@@ -111,17 +199,37 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
 
       <Divider />
 
-      <Button active={isBlockActive("left")} onClick={() => toggleBlock("left")}>
-        <AlignLeft size={18} />
+      <DropdownMenu>
+        <DropdownMenuTrigger className="p-1.5 rounded-sm hover:bg-slate-100 transition-colors text-slate-700 flex items-center justify-center focus:outline-none">
+          <AlignIcon size={18} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="center" className="w-32 mb-2">
+          <DropdownMenuItem className="focus:bg-slate-100" onClick={() => toggleBlock("left")}>
+            <AlignLeft size={16} className="mr-2" />
+            <span>Left</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="focus:bg-slate-100" onClick={() => toggleBlock("center")}>
+            <AlignCenter size={16} className="mr-2" />
+            <span>Center</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="focus:bg-slate-100" onClick={() => toggleBlock("right")}>
+            <AlignRight size={16} className="mr-2" />
+            <span>Right</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="focus:bg-slate-100" onClick={() => toggleBlock("justify")}>
+            <AlignJustify size={16} className="mr-2" />
+            <span>Justify</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Divider />
+
+      <Button active={isBlockActive("bulleted-list", "type")} onClick={() => toggleList("bulleted-list")}>
+        <List size={18} />
       </Button>
-      <Button active={isBlockActive("center")} onClick={() => toggleBlock("center")}>
-        <AlignCenter size={18} />
-      </Button>
-      <Button active={isBlockActive("right")} onClick={() => toggleBlock("right")}>
-        <AlignRight size={18} />
-      </Button>
-      <Button active={isBlockActive("justify")} onClick={() => toggleBlock("justify")}>
-        <AlignJustify size={18} />
+      <Button active={isBlockActive("numbered-list", "type")} onClick={() => toggleList("numbered-list")}>
+        <ListOrdered size={18} />
       </Button>
 
       <Divider />
@@ -130,7 +238,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel }) => {
         <Button onClick={() => changeFontSize(-2)}>
           <Minus size={16} />
         </Button>
-        <span className="text-xs font-medium text-slate-600 w-6 text-center select-none pt-[2px]">
+        <span className="text-xs font-medium text-slate-600 w-6 text-center select-none">
           {((Editor.marks(editor) as any)?.fontSize) || 16}
         </span>
         <Button onClick={() => changeFontSize(2)}>
