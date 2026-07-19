@@ -13,6 +13,8 @@ import { generateIdentity } from "@/lib/identity";
 import { useRemoteCursors } from "@/hooks/useRemoteCursors";
 import { CursorOverlay } from "./CursorOverlay";
 import LinkPopover from "./LinkPopover";
+import VersionHistorySidebar from "./VersionHistorySidebar";
+import ComparisonView from "./ComparisonView";
 import { uploadImageToCloudinary } from "@/cloudinary";
 import { toast } from "sonner";
 
@@ -37,6 +39,7 @@ export type CustomText = {
   italic?: boolean;
   underline?: boolean;
   fontSize?: number;
+  authorName?: string;
 };
 
 declare module "slate" {
@@ -157,8 +160,11 @@ const Editor = () => {
   const [yjsContext, setYjsContext] = useState<{ sharedType: Y.XmlText; provider: WebrtcProvider; editor: any } | null>(null);
 
   const [isLocalSynced, setIsLocalSynced] = useState<boolean>(false);
-  const [localContext, setLocalContext] = useState<{ doc: Y.Doc; sharedType: Y.XmlText; indexeddbProvider: IndexeddbPersistence } | null>(null);
+  const [localContext, setLocalContext] = useState<{ doc: Y.Doc; sharedType: Y.XmlText; indexeddbProvider: IndexeddbPersistence; versionsMap: Y.Map<any> } | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error" | "hidden">("hidden");
+  
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   const [isLinkPopoverOpen, setIsLinkPopoverOpen] = useState(false);
   const [linkSelectionRect, setLinkSelectionRect] = useState<DOMRect | null>(null);
@@ -250,15 +256,17 @@ const Editor = () => {
   useEffect(() => {
     // Instantiate Yjs and IndexedDB on the client side
     const doc = new Y.Doc();
+    doc.gc = false; // Required for Y.snapshot and Y.createDocFromSnapshot
     const sharedType = doc.get("content", Y.XmlText) as Y.XmlText;
     const indexeddbProvider = new IndexeddbPersistence("test-document-room", doc);
+    const versionsMap = doc.getMap("versions") as Y.Map<any>;
 
     let synced = false;
     indexeddbProvider.on("synced", () => {
       if (!synced) {
         synced = true;
         setIsLocalSynced(true);
-        setLocalContext({ doc, sharedType, indexeddbProvider });
+        setLocalContext({ doc, sharedType, indexeddbProvider, versionsMap });
       }
     });
 
@@ -268,7 +276,7 @@ const Editor = () => {
         synced = true;
         setIsLocalSynced(true);
         setSaveStatus("error");
-        setLocalContext({ doc, sharedType, indexeddbProvider });
+        setLocalContext({ doc, sharedType, indexeddbProvider, versionsMap });
       }
     });
 
@@ -290,7 +298,12 @@ const Editor = () => {
       { data: identity.current }
     );
 
-    const { isVoid, isInline, normalizeNode } = editor;
+    const { isVoid, isInline, normalizeNode, insertText } = editor;
+
+    editor.insertText = (text) => {
+      SlateEditor.addMark(editor, "authorName", identity.current.name);
+      insertText(text);
+    };
 
     editor.isVoid = element => {
       return (element as any).type === "image" || (element as any).type === "image-loading" ? true : isVoid(element);
@@ -538,6 +551,22 @@ const Editor = () => {
 
   const cursorStates = useRemoteCursors(yjsContext?.editor, yjsContext?.provider);
 
+  const handleSaveVersion = useCallback(() => {
+    if (!localContext) return;
+    const { doc, versionsMap } = localContext;
+    if (!versionsMap) return;
+    const snapshot = Y.snapshot(doc);
+    const encodedSnapshot = Y.encodeSnapshot(snapshot);
+    const timestamp = Date.now().toString();
+    
+    versionsMap.set(timestamp, {
+      date: new Date().toISOString(),
+      snapshot: encodedSnapshot,
+    });
+    
+    toast.success("Version saved successfully!");
+  }, [localContext]);
+
   if (!isLocalSynced) {
     return (
       <div className="w-full h-screen flex items-center justify-center bg-slate-50">
@@ -571,24 +600,56 @@ const Editor = () => {
   return (
     <div className="w-full max-w-4xl mx-auto my-8 px-4 sm:px-6 lg:px-8 relative pb-32">
       <Slate editor={editor} initialValue={initialValue} onChange={handleEditorChange}>
-        <Toolbar zoomLevel={zoomLevel} setZoomLevel={setZoomLevel} onOpenLinkPopover={openLinkPopover} />
+        {!isHistoryOpen && (
+          <Toolbar 
+            zoomLevel={zoomLevel} 
+            setZoomLevel={setZoomLevel} 
+            onOpenLinkPopover={openLinkPopover} 
+            onSaveVersion={handleSaveVersion}
+            onToggleHistory={() => setIsHistoryOpen(!isHistoryOpen)}
+            isHistoryOpen={isHistoryOpen}
+          />
+        )}
         
         <div 
           className="transition-transform duration-200 ease-in-out origin-top"
           style={{ transform: `scale(${zoomLevel / 100})` }}
         >
-          <div className="bg-white shadow-2xl ring-1 ring-slate-200 min-h-[1050px] w-full p-12 sm:p-20 flex flex-col rounded-sm relative">
-            <CursorOverlay cursorStates={cursorStates} sharedType={sharedType} />
-            <Editable 
-              className="outline-none flex-grow text-slate-800"
-              placeholder="Start typing..."
-              renderElement={renderElement}
-              renderLeaf={renderLeaf}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-            />
+          <div className="bg-white shadow-2xl ring-1 ring-slate-200 min-h-[1050px] w-full flex rounded-sm relative">
+            <div className={`flex flex-col p-12 sm:p-20 relative ${selectedVersionId ? 'w-1/2 border-r border-slate-200' : 'w-full'}`}>
+              <CursorOverlay cursorStates={cursorStates} sharedType={sharedType} />
+              <Editable 
+                className="outline-none flex-grow text-slate-800"
+                placeholder="Start typing..."
+                renderElement={renderElement}
+                renderLeaf={renderLeaf}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+              />
+            </div>
+            {selectedVersionId && localContext && (
+              <div className="w-1/2 relative bg-slate-50 overflow-hidden rounded-r-sm">
+                <ComparisonView 
+                  liveDoc={localContext.doc} 
+                  encodedSnapshot={localContext.versionsMap.get(selectedVersionId).snapshot} 
+                />
+              </div>
+            )}
           </div>
         </div>
+
+        {localContext && (
+          <VersionHistorySidebar
+            isOpen={isHistoryOpen}
+            onClose={() => {
+              setIsHistoryOpen(false);
+              setSelectedVersionId(null);
+            }}
+            versionsMap={localContext.versionsMap}
+            selectedVersionId={selectedVersionId}
+            onSelectVersion={setSelectedVersionId}
+          />
+        )}
 
         {/* Connection Status Chip */}
         <div className="fixed bottom-8 right-8 z-50 bg-white/90 backdrop-blur border border-slate-200/60 shadow-xl rounded-full px-4 py-2.5 flex items-center hover:shadow-2xl hover:-translate-y-0.5 transition-all cursor-default overflow-hidden">

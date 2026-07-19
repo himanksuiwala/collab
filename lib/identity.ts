@@ -35,12 +35,39 @@ const COLORS = [
  * Generates a random session identity consisting of a pseudonym and a hex color.
  */
 export function generateIdentity(): CursorData {
+  let storedIdentity: CursorData | null = null;
+  
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("localUserName");
+      if (stored) {
+        storedIdentity = JSON.parse(stored);
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
+    }
+  }
+
+  if (storedIdentity && storedIdentity.name && storedIdentity.color) {
+    return storedIdentity;
+  }
+
   const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
   const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
   const color = COLORS[Math.floor(Math.random() * COLORS.length)];
   
-  return {
+  const newIdentity = {
     name: `${adj} ${animal}`,
     color,
   };
+
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("localUserName", JSON.stringify(newIdentity));
+    } catch (e) {
+      // Ignore quota errors
+    }
+  }
+
+  return newIdentity;
 }

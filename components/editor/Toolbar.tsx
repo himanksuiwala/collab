@@ -17,7 +17,9 @@ import {
   List,
   ListOrdered,
   Image as ImageIcon,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Save,
+  History
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -32,9 +34,12 @@ interface ToolbarProps {
   zoomLevel: number;
   setZoomLevel: (zoom: number) => void;
   onOpenLinkPopover?: () => void;
+  onSaveVersion?: () => void;
+  onToggleHistory?: () => void;
+  isHistoryOpen?: boolean;
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel, onOpenLinkPopover }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel, onOpenLinkPopover, onSaveVersion, onToggleHistory, isHistoryOpen }) => {
   const editor = useSlate();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -315,6 +320,20 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel, onOpenLinkPo
       <Button onClick={() => fileInputRef.current?.click()}>
         <ImageIcon size={18} />
       </Button>
+
+      <Divider />
+
+      {/* 7. Version History */}
+      {onToggleHistory && (
+        <Button active={isHistoryOpen} onClick={onToggleHistory}>
+          <History size={18} />
+        </Button>
+      )}
+      {onSaveVersion && (
+        <Button onClick={onSaveVersion}>
+          <Save size={18} />
+        </Button>
+      )}
     </div>
   );
 };
