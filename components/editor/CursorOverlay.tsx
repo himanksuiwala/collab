@@ -24,12 +24,13 @@ export const CursorOverlay: React.FC<CursorOverlayProps> = ({ cursorStates, shar
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let animationFrameId: number;
-    
     const updateRects = () => {
       try {
         if (!containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
+        
+        const scaleX = (containerRect.width / containerRef.current.offsetWidth) || 1;
+        const scaleY = (containerRect.height / containerRef.current.offsetHeight) || 1;
         
         const newRects: CursorRect[] = [];
 
@@ -49,19 +50,19 @@ export const CursorOverlay: React.FC<CursorOverlayProps> = ({ cursorStates, shar
             if (isCollapsed) {
               const rect = domRange.getBoundingClientRect();
               caretRect = {
-                top: rect.top - containerRect.top,
-                left: rect.left - containerRect.left,
-                height: rect.height || 20,
+                top: (rect.top - containerRect.top) / scaleY,
+                left: (rect.left - containerRect.left) / scaleX,
+                height: (rect.height || 20) / scaleY,
               };
             } else {
               // Highlight rectangles
               const rects = Array.from(domRange.getClientRects());
               rects.forEach(r => {
                 selectionRects.push({
-                  top: r.top - containerRect.top,
-                  left: r.left - containerRect.left,
-                  width: r.width,
-                  height: r.height,
+                  top: (r.top - containerRect.top) / scaleY,
+                  left: (r.left - containerRect.left) / scaleX,
+                  width: r.width / scaleX,
+                  height: r.height / scaleY,
                 });
               });
               
@@ -73,9 +74,9 @@ export const CursorOverlay: React.FC<CursorOverlayProps> = ({ cursorStates, shar
               const focusRect = collapsedDOMRange.getBoundingClientRect();
               
               caretRect = {
-                top: focusRect.top - containerRect.top,
-                left: focusRect.left - containerRect.left,
-                height: focusRect.height || 20,
+                top: (focusRect.top - containerRect.top) / scaleY,
+                left: (focusRect.left - containerRect.left) / scaleX,
+                height: (focusRect.height || 20) / scaleY,
               };
             }
             
@@ -95,16 +96,9 @@ export const CursorOverlay: React.FC<CursorOverlayProps> = ({ cursorStates, shar
       } catch (e) {
         // Safe catch for top level errors
       }
-      
-      // Keep syncing if typing
-      animationFrameId = requestAnimationFrame(updateRects);
     };
 
     updateRects();
-    
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
   }, [cursorStates, editor, sharedType]);
 
   return (

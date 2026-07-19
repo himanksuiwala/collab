@@ -6,6 +6,14 @@ import { useCollaborators } from "./CollaboratorsContext";
 
 const Header = () => {
   const { collaborators } = useCollaborators();
+  const [localUser, setLocalUser] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    // Dynamically import to avoid SSR mismatch on localStorage
+    import("@/lib/identity").then(({ generateIdentity }) => {
+      setLocalUser(generateIdentity());
+    });
+  }, []);
 
   return (
     <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 shadow-sm flex items-center justify-between">
@@ -29,9 +37,21 @@ const Header = () => {
           ))}
         </div>
         
-        <button className="text-slate-500 hover:text-slate-900 transition-colors rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300">
-          <UserCircle size={28} strokeWidth={1.5} />
-        </button>
+        {localUser ? (
+          <div
+            className="relative group rounded-full border-2 border-white flex items-center justify-center text-white shadow-sm cursor-default ml-2"
+            style={{ backgroundColor: localUser.color, width: 32, height: 32 }}
+          >
+            <span className="text-xs font-semibold uppercase">{localUser.name.charAt(0)}</span>
+            <div className="absolute top-full right-0 mt-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded shadow-lg pointer-events-none z-50">
+              {localUser.name} (You)
+            </div>
+          </div>
+        ) : (
+          <button className="text-slate-500 hover:text-slate-900 transition-colors rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300 ml-2">
+            <UserCircle size={28} strokeWidth={1.5} />
+          </button>
+        )}
       </div>
     </header>
   );

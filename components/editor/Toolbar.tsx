@@ -39,6 +39,22 @@ interface ToolbarProps {
   isHistoryOpen?: boolean;
 }
 
+const Button = ({ active, onClick, children }: any) => (
+  <button
+    onMouseDown={(e) => {
+      e.preventDefault();
+      onClick();
+    }}
+    className={`p-1.5 rounded-sm hover:bg-slate-100 transition-colors flex items-center justify-center ${
+      active ? "bg-slate-200 text-slate-900" : "text-slate-600"
+    }`}
+  >
+    {children}
+  </button>
+);
+
+const Divider = () => <div className="w-px h-6 bg-slate-200 mx-2" />;
+
 const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel, onOpenLinkPopover, onSaveVersion, onToggleHistory, isHistoryOpen }) => {
   const editor = useSlate();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -208,21 +224,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ zoomLevel, setZoomLevel, onOpenLinkPo
     setZoomLevel(newZoom);
   };
 
-  const Button = ({ active, onClick, children }: any) => (
-    <button
-      onMouseDown={(e) => {
-        e.preventDefault();
-        onClick();
-      }}
-      className={`p-1.5 rounded-sm hover:bg-slate-100 transition-colors flex items-center justify-center ${
-        active ? "bg-slate-200 text-slate-900" : "text-slate-600"
-      }`}
-    >
-      {children}
-    </button>
-  );
 
-  const Divider = () => <div className="w-px h-6 bg-slate-200 mx-2" />;
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 h-[56px] bg-white/90 backdrop-blur border border-slate-200/60 flex items-center px-4 shadow-2xl rounded-2xl gap-1">

@@ -6,6 +6,7 @@ import { CursorData } from "@/lib/identity";
 export const useRemoteCursors = (editor: any, provider: any) => {
   const [cursorStates, setCursorStates] = useState<Record<string, any>>({});
   const lastKnownSelections = useRef<Record<string, any>>({});
+  const activeCollabsRef = useRef<string>("");
   const { updateCollaborators } = useCollaborators();
 
   useEffect(() => {
@@ -41,7 +42,12 @@ export const useRemoteCursors = (editor: any, provider: any) => {
       });
 
       setCursorStates(remoteStates);
-      updateCollaborators(activeCollaborators);
+      
+      const currentIds = activeCollaborators.map(c => c.clientId).sort().join(",");
+      if (currentIds !== activeCollabsRef.current) {
+        activeCollabsRef.current = currentIds;
+        updateCollaborators(activeCollaborators);
+      }
     };
 
     // Initial state grab
